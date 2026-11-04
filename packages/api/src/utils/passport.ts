@@ -1,14 +1,32 @@
 import passport from 'passport';
 import { Strategy as LocalStrategy } from 'passport-local';
 
+import { SESSION_MAX_AGE_SECONDS } from '@/config';
 import { findUserById } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import User from '@/models/user';
 
 import logger from './logger';
 
-passport.serializeUser(function (user, done) {
-  done(null, (user as any)._id);
+passport.serializeUser(function (req, user, done) {
+  if (SESSION_MAX_AGE_SECONDS) {
+    req.session.authExpiresAt = Date.now() + SESSION_MAX_AGE_SECONDS * 1000;
+  }
+  // Passport saves immediately after serialization. Include the expiry in
+  // that same write so an incomplete OIDC session cannot become a local one.
+  if (req.authInfo?.keycloak) {
+    const expiresAt = Math.min(
+      req.authInfo.keycloak.expiresAt,
+      req.session.authExpiresAt ??
+        Date.now() + (req.session.cookie.maxAge ?? Infinity),
+    );
+    req.session.keycloak = { ...req.authInfo.keycloak, expiresAt };
+    req.session.cookie.maxAge = Math.min(
+      req.session.cookie.maxAge ?? Infinity,
+      expiresAt - Date.now(),
+    );
+  }
+  done(null, user._id);
 });
 
 passport.deserializeUser(function (id: string, done) {

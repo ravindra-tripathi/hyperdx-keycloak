@@ -3282,6 +3282,8 @@ export type RotateApiKeyApiResponse = z.infer<
 // Installation
 export const InstallationApiResponseSchema = z.object({
   isTeamExisting: z.boolean(),
+  keycloakEnabled: z.boolean().optional(),
+  keycloakRequired: z.boolean().optional(),
 });
 
 export type InstallationApiResponse = z.infer<
@@ -3347,6 +3349,7 @@ export const MeApiResponseSchema = z.object({
   }).merge(TeamClickHouseSettingsSchema),
   usageStatsEnabled: z.boolean(),
   aiAssistantEnabled: z.boolean(),
+  canManageTeamSettings: z.boolean().optional(),
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;

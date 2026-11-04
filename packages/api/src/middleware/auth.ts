@@ -1,6 +1,7 @@
 import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Connection } from '@hyperdx/common-utils/dist/types';
 import type { NextFunction, Request, Response } from 'express';
+import type { SessionData } from 'express-session';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
@@ -20,6 +21,9 @@ declare global {
   namespace Express {
     // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     interface User extends UserDocument {}
+    interface AuthInfo {
+      keycloak?: SessionData['keycloak'];
+    }
     interface Request {
       _hdx_connection?: Connection;
     }
@@ -27,6 +31,17 @@ declare global {
 }
 
 declare module 'express-session' {
+  interface SessionData {
+    authExpiresAt?: number;
+    oidc?: {
+      state: string;
+      nonce: string;
+      codeVerifier: string;
+      createdAt: number;
+      inviteToken?: string;
+    };
+    keycloak?: { issuer: string; subject: string; expiresAt: number };
+  }
   interface Session {
     messages: string[]; // Set by passport
     passport: { user: string }; // Set by passport
@@ -155,6 +170,24 @@ export function isUserAuthenticated(
   }
 
   if (req.isAuthenticated()) {
+    const keycloak = req.session.keycloak;
+    if (
+      (req.session.cookie.originalMaxAge ?? 0) >
+        config.SESSION_IDLE_TIMEOUT_SECONDS * 1000 ||
+      (config.SESSION_MAX_AGE_SECONDS &&
+        (!req.session.authExpiresAt ||
+          req.session.authExpiresAt <= Date.now())) ||
+      (config.KEYCLOAK_REQUIRED && !keycloak) ||
+      (keycloak &&
+        (keycloak.expiresAt <= Date.now() ||
+          keycloak.issuer !== config.KEYCLOAK?.issuer ||
+          keycloak.issuer !== req.user?.keycloak?.issuer ||
+          keycloak.subject !== req.user?.keycloak?.subject))
+    ) {
+      return req.session.destroy(error =>
+        error ? next(error) : res.sendStatus(401),
+      );
+    }
     // Attach incident-remediation context to the trace and active span.
     setBusinessContext({
       teamId: req.user?.team?.toString(),

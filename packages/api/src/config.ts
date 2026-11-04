@@ -40,6 +40,32 @@ export const IS_LOCAL_IMAGE = HYPERDX_IMAGE === 'all-in-one-noauth';
 // hosts, so absolute URLs anchored at FRONTEND_URL are required.
 export const IS_INLINE_API = env.HDX_PREVIEW_INLINE_API === 'true';
 export const FRONTEND_REDIRECT_BASE = IS_INLINE_API ? '' : FRONTEND_URL;
+export const SESSION_MAX_AGE_SECONDS =
+  env.SESSION_MAX_AGE_SECONDS === undefined
+    ? undefined
+    : Number(env.SESSION_MAX_AGE_SECONDS);
+export const SESSION_IDLE_TIMEOUT_SECONDS = Number(
+  env.SESSION_IDLE_TIMEOUT_SECONDS ?? 2592000,
+);
+for (const [name, value] of Object.entries({
+  SESSION_MAX_AGE_SECONDS,
+  SESSION_IDLE_TIMEOUT_SECONDS,
+})) {
+  if (
+    value !== undefined &&
+    (!Number.isSafeInteger(value) || value <= 0 || value > 2592000)
+  ) {
+    throw new Error(`${name} must be an integer between 1 and 2592000 seconds`);
+  }
+}
+if (
+  SESSION_MAX_AGE_SECONDS &&
+  SESSION_IDLE_TIMEOUT_SECONDS > SESSION_MAX_AGE_SECONDS
+) {
+  throw new Error(
+    'SESSION_IDLE_TIMEOUT_SECONDS must not exceed SESSION_MAX_AGE_SECONDS',
+  );
+}
 export const INGESTION_API_KEY = env.INGESTION_API_KEY ?? '';
 // Opt-in: emit the contrib `datadogreceiver` on the collector so a
 // Datadog Agent can ship APM traces (DD trace API -> OTLP -> ClickHouse).
@@ -51,6 +77,57 @@ export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
 export const IS_CI = NODE_ENV === 'test';
 export const IS_DEV = NODE_ENV === 'development';
 export const IS_PROD = NODE_ENV === 'production';
+export const KEYCLOAK_REQUIRED = env.KEYCLOAK_REQUIRED === 'true';
+export const KEYCLOAK = (() => {
+  if (
+    env.KEYCLOAK_REQUIRED &&
+    !['true', 'false'].includes(env.KEYCLOAK_REQUIRED)
+  ) {
+    throw new Error('Keycloak: KEYCLOAK_REQUIRED must be true or false');
+  }
+  if (
+    !env.KEYCLOAK_ISSUER &&
+    !env.KEYCLOAK_CLIENT_ID &&
+    !env.KEYCLOAK_CLIENT_SECRET &&
+    !KEYCLOAK_REQUIRED
+  )
+    return;
+
+  if (!env.KEYCLOAK_ISSUER || !env.KEYCLOAK_CLIENT_ID || IS_LOCAL_APP_MODE) {
+    throw new Error(
+      'Keycloak requires an issuer, client ID, and authenticated app mode',
+    );
+  }
+  try {
+    const issuer = new URL(env.KEYCLOAK_ISSUER);
+    const frontend = new URL(FRONTEND_URL);
+    for (const url of [issuer, frontend]) {
+      const localHttp =
+        !IS_PROD &&
+        url.protocol === 'http:' &&
+        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+      if (
+        (url.protocol !== 'https:' && !localHttp) ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+      )
+        throw new Error();
+    }
+    if (frontend.pathname !== '/') throw new Error();
+    return {
+      issuer: env.KEYCLOAK_ISSUER,
+      clientId: env.KEYCLOAK_CLIENT_ID,
+      clientSecret: env.KEYCLOAK_CLIENT_SECRET,
+      callbackUrl: new URL('/api/login/keycloak/callback', frontend).href,
+    };
+  } catch {
+    throw new Error(
+      'Keycloak requires an HTTPS issuer and FRONTEND_URL origin (HTTP loopback allowed outside production)',
+    );
+  }
+})();
 export const MONGO_URI = env.MONGO_URI;
 export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);
