@@ -1,3 +1,4 @@
+import { DEFAULT_TEST_USER } from '../global-setup-fullstack';
 import { expect, test } from '../utils/base-test';
 
 test.describe('Session expiry', { tag: ['@auth', '@full-stack'] }, () => {
@@ -5,6 +6,13 @@ test.describe('Session expiry', { tag: ['@auth', '@full-stack'] }, () => {
     page,
     context,
   }) => {
+    // Do not invalidate the saved session shared by other specs.
+    await context.clearCookies();
+    const login = await page.request.post('/api/login/password', {
+      data: DEFAULT_TEST_USER,
+      maxRedirects: 0,
+    });
+    expect(login.status()).toBe(303);
     await page.goto('/team?tab=api-agents', { waitUntil: 'domcontentloaded' });
     await expect(
       page.getByRole('tab', { name: 'API & Agents' }),
@@ -18,7 +26,13 @@ test.describe('Session expiry', { tag: ['@auth', '@full-stack'] }, () => {
       )
         loginDocuments++;
     });
-    await context.clearCookies();
+    // Clearing cookies alone races with in-flight rolling Set-Cookie responses.
+    const logout = await page.request.post('/api/logout', {
+      headers: { Origin: new URL(page.url()).origin },
+      maxRedirects: 0,
+    });
+    expect(logout.status()).toBe(303);
+    expect((await page.request.get('/api/me')).status()).toBe(401);
     const loginNavigation = page.waitForRequest(
       request =>
         request.isNavigationRequest() &&

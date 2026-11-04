@@ -30,7 +30,7 @@ const SOURCE_SELECTOR_TIMEOUT_MS = 10000;
 const PAGE_LOAD_TIMEOUT_MS = 30000;
 
 // Password must be at least 8 characters with uppercase, lowercase, number, and special char
-const DEFAULT_TEST_USER = {
+export const DEFAULT_TEST_USER = {
   email: process.env.E2E_TEST_USER_EMAIL || 'e2e-test@hyperdx.io',
   password: process.env.E2E_TEST_USER_PASSWORD || 'TestPassword123!',
 } as const;
